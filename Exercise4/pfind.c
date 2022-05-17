@@ -12,6 +12,7 @@ typedef struct node{
 
 int threads_can_start = 0;
 int counter_of_finds = 0;
+int threads_waiting;
 mtx_t lock_for_beginning;
 mtx_t lock_for_queue;
 cnd_t cv;
@@ -114,14 +115,18 @@ int the_search_thread(){
     if(rc != thrd_success){
         //TODO - Print a suitable message
     }//end of if
+
     if(!threads_can_start){
         cnd_wait(&cv, &lock_for_beginning);
     }//end of if
+
     rc = mtx_unlock(&lock_for_beginning);
     if(rc != thrd_success){
         //TODO - Print a suitable message
     }//end of if
 
+
+    //TODO - dont busy wait
 
 
 
@@ -151,18 +156,38 @@ int main(int argc, char *argv[]){
 
 
     threads_num  = atoi(argv[3]);
+    threads_waiting = threads_num;
     thrd_t thread[threads_num];
     start = NULL;
     end = NULL;
 
+    cnd_init(&cv);
+
     //TODO - check if argv[1] can be searched
     //TODO - insert argv[1] info the queue (remmember argv[1] is string maybe need casting)
-    for (int t = 0; t < threads_num; ++t) {
+
+
+    for (int t = 0; t < threads_num; ++t) {//create n searching threads
         rc = thrd_create(&thread[t], the_search_thread, NULL);
         if (rc != thrd_success) {
           //TODO - Print a suitable message
         }//end of if
     }//end of for
+
+    rc = mtx_lock(&lock_for_beginning);
+    if(rc != thrd_success){
+        //TODO - Print a suitable message
+    }//end of if
+    
+    threads_can_start = 1;
+
+    rc = mtx_unlock(&lock_for_beginning);
+    if(rc != thrd_success){
+        //TODO - Print a suitable message
+    }//end of if
+
+    cnd_broadcast(&cv);//all threads can start, we signal them to start
+
 
 
 
