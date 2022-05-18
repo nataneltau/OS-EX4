@@ -2,11 +2,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <limits.h>
+
 
 #define SUCCESS 0
 
+/* credits:
+ * help with the_search_thread() function: https://www.youtube.com/watch?v=j9yL30R6npk
+*/
+
 typedef struct node{
-    DIR *dirp;
+    //DIR *data;
+    char path_name[PATH_MAX];
     struct node *link;
 }node;
 
@@ -27,7 +35,7 @@ int is_queue_empty(){
 
 
 
-int atomic_insert(DIR *wanted_dirp){
+int atomic_insert(char *path){//this func got also DIR *wanted_dir
 
     int rc;
     node *temp;
@@ -39,8 +47,9 @@ int atomic_insert(DIR *wanted_dirp){
 
     temp = (node*)malloc(sizeof(node));
 
-    temp->dirp = wanted_dirp;
+    //temp->data = wanted_dir;
     temp->link = NULL;
+    strncpy(temp->path_name, path, PATH_MAX);
 
     if(is_queue_empty()){//queue is empty
         start = end = temp;
@@ -64,19 +73,25 @@ int atomic_insert(DIR *wanted_dirp){
 
 }//end of function atomic_insert
 
-//need to check that queue isn't empty before
-DIR *atomic_dequeue(){
+
+node *atomic_dequeue(){
 
     int rc;
-    DIR *temp;
+    node *temp;
     node *next;
 
+
+    //need to check that queue isn't empty, if empty then cnd_wait and increase some counter
     rc = mtx_lock(&lock_for_queue);
     if(rc != thrd_success){
         //TODO - Print a suitable message
     }
 
-    temp = start->dirp;
+    temp = (node*)malloc(sizeof(node));
+
+    //temp->data = start->data;
+    temp->path_name = start->path_name;
+    temp->link = NULL;
 
     next = start;
 
@@ -110,6 +125,10 @@ DIR *atomic_dequeue(){
 int the_search_thread(){
 
     int rc;
+    node *current;
+    DIR *dir;
+    struct dirent *entry;
+
 
     rc = mtx_lock(&lock_for_beginning);
     if(rc != thrd_success){
@@ -125,12 +144,32 @@ int the_search_thread(){
         //TODO - Print a suitable message
     }//end of if
 
+    current = atomic_dequeue();
+
+    dir = opendir(current->path_name);
+    if(dir == NULL){//error in opendir
+        //TODO - Print a suitable message
+    }//end of if
+
+    entry = readdir(dir);
+    while(entry != NULL){
+
+
+        
+
+
+    }//end of while
+
+    
+
 
     //TODO - dont busy wait
 
+    closedir(dir);
 
+    the_search_thread();
 
-}
+}//end of function the_search_thread
 
 
 
