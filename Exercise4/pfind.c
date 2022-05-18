@@ -18,11 +18,14 @@ typedef struct node{
     struct node *link;
 }node;
 
+char *search_term;
 int threads_can_start = 0;
 int counter_of_finds = 0;
-int threads_waiting;
+int max_threads_waiting;
+int curr_threads_waiting = 0;
 mtx_t lock_for_beginning;
 mtx_t lock_for_queue;
+mtx_t lock_for_counter_of_finds;
 cnd_t cv;
 node *start, *end;
 
@@ -33,9 +36,8 @@ int is_queue_empty(){
 
 }
 
-
-
-int atomic_insert(char *path){//this func got also DIR *wanted_dir
+//TODO - need to make cnd_signal inside this func
+int atomic_insert(const char *path){//this func got also DIR *wanted_dir
 
     int rc;
     node *temp;
@@ -74,6 +76,7 @@ int atomic_insert(char *path){//this func got also DIR *wanted_dir
 }//end of function atomic_insert
 
 
+//need to do cnd_wait inside this func, and maintain curr_threads_waiting and  check if the queue will stay empty forever, if it will then back to main thread?
 node *atomic_dequeue(){
 
     int rc;
@@ -90,7 +93,7 @@ node *atomic_dequeue(){
     temp = (node*)malloc(sizeof(node));
 
     //temp->data = start->data;
-    temp->path_name = start->path_name;
+    strncpy(temp->path_name, start->path_name, PATH_MAX);
     temp->link = NULL;
 
     next = start;
@@ -122,12 +125,42 @@ node *atomic_dequeue(){
 
 }//end of function atomic_dequeue
 
+int fit_search(const char *name){
+
+    char *result;
+
+    result = strstr(name, search_term);
+
+    if(result != NULL){
+        return SUCCESS;
+    }
+
+    //if we are here than name doesn't conatin search_term
+    return !SUCCESS;
+
+}
+
+int directory_can_be_search(const char *path){
+    DIR *dir;
+    dir = opendir(current->path_name);
+    if(dir == NULL){//error in opendir so directory cann't be searched
+        return 0;
+    }//end of if
+
+    closedir(dir);
+
+    return 1;//directory can be searched
+
+
+}//end of function directory_can_be_search
+
 int the_search_thread(){
 
     int rc;
     node *current;
     DIR *dir;
     struct dirent *entry;
+    char pathi[PATH_MAX] = {0};
 
 
     rc = mtx_lock(&lock_for_beginning);
@@ -144,7 +177,8 @@ int the_search_thread(){
         //TODO - Print a suitable message
     }//end of if
 
-    current = atomic_dequeue();
+    current = atomic_dequeue();//it seems that this func is infinit recursion, but it should stop here
+    //when we searched all the directories
 
     dir = opendir(current->path_name);
     if(dir == NULL){//error in opendir
@@ -154,10 +188,48 @@ int the_search_thread(){
     entry = readdir(dir);
     while(entry != NULL){
 
+        strcat(pathi, current->path_name);
+        strcat(pathi, "/");
+        strcat(pathi, entry->d_name);
 
-        
+        //this if check if entry is directory different than "." or ".."
+        if(entry->d_type == DT_DIR && strcmp(entry->d_name, ".")!= 0 && strcmp(entry->d_name, "..")!= 0){
 
+            if(directory_can_be_search(pathi)){
 
+                if(atomic_insert(pathi) != SUCCESS){
+                    //TODO - Print a suitable message
+                }//end of inner if
+
+            }//end of if
+            else{
+                printf("Directory %s: Permission denied.\n", pathi);
+            }//end of else
+
+        }//end of if
+        else{
+
+            if(fit_search(entry->d_name) == SUCCESS){//dirent contain the search term
+                
+                rc = mtx_lock(&lock_for_counter_of_finds);
+                if(rc != thrd_success){
+                    //TODO - Print a suitable message
+                }//end of if
+
+                counter_of_finds++;
+
+                rc = mtx_unlock(&lock_for_counter_of_finds);
+                if(rc != thrd_success){
+                    //TODO - Print a suitable message
+                }//end of if
+
+                printf("%s\n", pathi);
+                
+            }//end of if
+
+        }//end of else
+
+        memset(pathi, 0, sizeof(pathi));
     }//end of while
 
     
@@ -171,9 +243,6 @@ int the_search_thread(){
 
 }//end of function the_search_thread
 
-
-
-
 int main(int argc, char *argv[]){
 
     if(argc != 4){
@@ -183,28 +252,28 @@ int main(int argc, char *argv[]){
     int rc;
     int threads_num;
 
-    rc = mtx_init(&lock_for_beginning, mtx_plain);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
+    if(!directory_can_be_search(argv[1])){//enter if the directory cann't be searched
+        //TODO - print what what wanted in the assignment
+    }
 
-    rc = mtx_init(&lock_for_queue, mtx_plain);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
+    mtx_init(&lock_for_beginning, mtx_plain);
+    mtx_init(&lock_for_queue, mtx_plain);
+    mtx_init(&lock_for_counter_of_finds, mtx_plain);
 
 
+    search_term = argv[2];
     threads_num  = atoi(argv[3]);
-    threads_waiting = threads_num;
+    max_threads_waiting = threads_num;
     thrd_t thread[threads_num];
     start = NULL;
     end = NULL;
 
     cnd_init(&cv);
+    if(atomic_insert(argv[1]) != SUCCESS){
+        //TODO - Print a suitable message
+    }//end of inner if
 
-    //TODO - check if argv[1] can be searched
-    //TODO - insert argv[1] info the queue (remmember argv[1] is string maybe need casting)
-
+    
 
     for (int t = 0; t < threads_num; ++t) {//create n searching threads
         rc = thrd_create(&thread[t], the_search_thread, NULL);
@@ -230,7 +299,7 @@ int main(int argc, char *argv[]){
 
 
 
-    //TODO - at the end need destroy locks
+    //TODO - at the end need destroy locks and maybe also all cnd_t
 
 }//end of main 
 
