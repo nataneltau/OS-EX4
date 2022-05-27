@@ -18,6 +18,17 @@ int main(){
 
     printf("%s\n", path);
 
+    /*FILE *fptr_in, *fptr_out;
+    char str[100];
+    fptr_in = fopen("stam.txt", "r");
+    fptr_out = fopen("outi.txt", "w");
+
+    while(fscanf(fptr_in, "%s", str) == 1){
+        fprintf(fptr_out, "%s ", str);
+    }
+
+    fclose(fptr_in);
+    fclose(fptr_out);*/
 
     return 0;
 }
