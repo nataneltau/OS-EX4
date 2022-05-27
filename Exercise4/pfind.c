@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 
 
 //when i stopped: need to check in insert_th_queue and continue to build th_queue implemantion 
@@ -59,9 +60,6 @@ void delete_th_queue(){//when I am inside I hold lock_for_queue || inside i also
     }//end of if
 
     rc = mtx_lock(&lock_for_array_threads);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
     cnd_signal(&array_threads_queue[start_th_queue]);
 
@@ -80,9 +78,6 @@ void delete_th_queue(){//when I am inside I hold lock_for_queue || inside i also
     }//end of else
 
     rc = mtx_unlock(&lock_for_array_threads);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
 }//end of function delete_th_queue
 
@@ -108,10 +103,6 @@ void insert_th_queue(){//when I am inside I hold lock_for_queue
         if(is_queue_empty()){//the search is over, I am the last that is awake
 
             rc = mtx_unlock(&lock_for_queue);
-            if(rc != thrd_success){
-                //TODO - Print a suitable message
-            }//end of if
-
 
            search_over_wake_everyone();
 
@@ -143,10 +134,6 @@ void insert_th_queue(){//when I am inside I hold lock_for_queue
     if(is_queue_empty()){//check if wake up cause queue has something or cause the search is over
 
         rc = mtx_unlock(&lock_for_queue);
-        if(rc != thrd_success){
-            //TODO - Print a suitable message
-        }//end of if
-
 
         //search_over_wake_everyone();//don't think need this cause if we are here than someone already called this func
 
@@ -163,13 +150,9 @@ int atomic_insert(const char *path){//this func got also DIR *wanted_dir
     node *temp;
 
     rc = mtx_lock(&lock_for_queue);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }
 
     temp = (node*)malloc(sizeof(node));
 
-    //temp->data = wanted_dir;
     temp->link = NULL;
     strncpy(temp->path_name, path, PATH_MAX);
 
@@ -177,9 +160,7 @@ int atomic_insert(const char *path){//this func got also DIR *wanted_dir
         start = end = temp;
         delete_th_queue();
         rc = mtx_unlock(&lock_for_queue);
-        if(rc != thrd_success){
-            //TODO - Print a suitable message
-        }//end of if
+        
         return SUCCESS;
     }//end of if
 
@@ -189,9 +170,6 @@ int atomic_insert(const char *path){//this func got also DIR *wanted_dir
 
     delete_th_queue();
     rc = mtx_unlock(&lock_for_queue);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }
 
     return SUCCESS;
 
@@ -203,19 +181,15 @@ char *atomic_dequeue(){
     char *temp;
     node *next;
 
-
     //need to check that queue isn't empty, if empty then cnd_wait and increase some counter
     rc = mtx_lock(&lock_for_queue);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }
 
     if(!is_th_queue_empty() || is_queue_empty()){//there is threads waiting or the queue of dir is empty
         insert_th_queue();
     }
 
     temp = (char *)malloc(sizeof(char) * (PATH_MAX+1));
-    //temp->data = start->data;
+
     strncpy(temp, start->path_name, PATH_MAX+1);
 
     next = start;
@@ -227,9 +201,6 @@ char *atomic_dequeue(){
         end = NULL;
 
         rc = mtx_unlock(&lock_for_queue);
-        if(rc != thrd_success){
-            //TODO - Print a suitable message
-        }//end of if
 
         return temp;
 
@@ -239,9 +210,6 @@ char *atomic_dequeue(){
     free(next);
 
     rc = mtx_unlock(&lock_for_queue);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
     return temp;
 
@@ -287,18 +255,12 @@ void the_search_thread(){
 
 
     rc = mtx_lock(&lock_for_beginning);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
     if(!threads_can_start){
         cnd_wait(&let_begin, &lock_for_beginning);
     }//end of if
 
     rc = mtx_unlock(&lock_for_beginning);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
     curr_path = atomic_dequeue();//it seems that this func is infinit recursion, but it should stop here
     //when we searched all the directories
@@ -319,16 +281,10 @@ void the_search_thread(){
             if(fit_search(entry->d_name) == SUCCESS){//dirent contain the search term
                 
                 rc = mtx_lock(&lock_for_counter_of_finds);
-                if(rc != thrd_success){
-                    //TODO - Print a suitable message
-                }//end of if
 
                 counter_of_finds++;
 
                 rc = mtx_unlock(&lock_for_counter_of_finds);
-                if(rc != thrd_success){
-                    //TODO - Print a suitable message
-                }//end of if
 
                 printf("%s\n", pathi);
                 
@@ -354,16 +310,10 @@ void the_search_thread(){
             if(fit_search(entry->d_name) == SUCCESS){//dirent contain the search term
                 
                 rc = mtx_lock(&lock_for_counter_of_finds);
-                if(rc != thrd_success){
-                    //TODO - Print a suitable message
-                }//end of if
 
                 counter_of_finds++;
 
                 rc = mtx_unlock(&lock_for_counter_of_finds);
-                if(rc != thrd_success){
-                    //TODO - Print a suitable message
-                }//end of if
 
                 printf("%s\n", pathi);
                 
@@ -375,10 +325,6 @@ void the_search_thread(){
     }//end of while
 
     
-
-
-    //TODO - dont busy wait
-
     closedir(dir);
     free(curr_path);
 
@@ -388,15 +334,20 @@ void the_search_thread(){
 
 int main(int argc, char *argv[]){
 
+
     if(argc != 4){
-        //TODO - print what what wanted in the assignment
+        errno = EINVAL;
+        fprintf( stderr, "%s\n", strerror(errno));
+        exit(1);
     }//end of if
 
     int rc;
     int threads_num;
 
     if(!directory_can_be_search(argv[1])){//enter if the directory cann't be searched
-        //TODO - print what what wanted in the assignment
+        errno = EINVAL;
+        fprintf( stderr, "%s\n", strerror(errno));
+        exit(1);
     }
 
     mtx_init(&lock_for_beginning, mtx_plain);
@@ -425,29 +376,22 @@ int main(int argc, char *argv[]){
     }
 
     if(atomic_insert(argv[1]) != SUCCESS){
-        //TODO - Print a suitable message
+        fprintf( stderr, "%s\n", strerror(errno));
+        exit(1);
     }//end of inner if
 
     
 
     for (int t = 0; t < threads_num; t++) {//create n searching threads
         rc = thrd_create(&thread[t], (void *)the_search_thread, NULL);
-        if (rc != thrd_success) {
-          //TODO - Print a suitable message
-        }//end of if
+        
     }//end of for
 
     rc = mtx_lock(&lock_for_beginning);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
     
     threads_can_start = 1;
 
     rc = mtx_unlock(&lock_for_beginning);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
     cnd_broadcast(&let_begin);//all threads can start, we signal them to start
 
@@ -459,16 +403,10 @@ int main(int argc, char *argv[]){
 
 
     rc = mtx_lock(&lock_for_counter_of_finds);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
     printf("Done searching, found %d files\n", counter_of_finds);//
 
     rc = mtx_unlock(&lock_for_counter_of_finds);
-    if(rc != thrd_success){
-        //TODO - Print a suitable message
-    }//end of if
 
 
     mtx_destroy(&lock_for_beginning);
@@ -482,7 +420,6 @@ int main(int argc, char *argv[]){
         cnd_destroy(&array_threads_queue[j]);
     }
     free(array_threads_queue);
-    //TODO - at the end need destroy locks and maybe also all cnd_t
 
     if(was_error){//an error occur in at least one threads
         //TODO - WHAT NEEDED AND EXIT PROPERLY
