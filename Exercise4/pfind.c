@@ -40,23 +40,24 @@ cnd_t *array_threads_queue;//the size of the array should be number_of_threads+1
 node *start, *end;
 int start_th_queue, end_th_queue;
 
-int is_th_queue_empty(){
+int is_th_queue_empty(){//return true is array_threads_queue is empty
 
     return start_th_queue == -1;
 
-}//end of function is_th_queue_empty
+}//end of function is_th_queue_empty 
 
-int is_queue_empty(){
+int is_queue_empty(){//return true if the queue for dir is empty
 
     return end == NULL || start == NULL;
 
 }//end of function is_queue_empty
 
+//this func remove thread from array_threads_queue
 void delete_th_queue(){//when I am inside I hold lock_for_queue || inside i also hold another lock
 
     
 
-    if(is_th_queue_empty()){
+    if(is_th_queue_empty()){//array_threads_queue don't signal any one
         return;
     }//end of if
 
@@ -89,7 +90,7 @@ void delete_th_queue(){//when I am inside I hold lock_for_queue || inside i also
 
 }//end of function delete_th_queue
 
-void search_over_wake_everyone(){
+void search_over_wake_everyone(){//this func called when the search is over and it exit all threads
 
     //int check;
 
@@ -277,7 +278,9 @@ void the_search_thread(){
 
     dir = opendir(curr_path);
     if(dir == NULL){//error in opendir
-        //TODO - Print a suitable message
+        was_error = 1;
+        fprintf( stderr, "%s\n", strerror(errno));
+        thrd_exit(SUCCESS);
     }//end of if
 
     entry = readdir(dir);
@@ -306,7 +309,9 @@ void the_search_thread(){
             if(directory_can_be_search(pathi)){
 
                 if(atomic_insert(pathi) != SUCCESS){
-                    //TODO - Print a suitable message
+                    was_error = 1;
+                    fprintf( stderr, "%s\n", strerror(errno));
+                    thrd_exit(SUCCESS);
                 }//end of inner if
 
             }//end of if
@@ -449,7 +454,7 @@ int main(int argc, char *argv[]){
     free(array_threads_queue);
 
     if(was_error){//an error occur in at least one threads
-        //TODO - WHAT NEEDED AND EXIT PROPERLY
+        exit(1);
     }
 
     return 0;
