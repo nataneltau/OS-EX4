@@ -200,7 +200,6 @@ void atomic_dequeue(char temp[]){
     }
 
     //temp = (char *)malloc(sizeof(char) * (PATH_MAX+1));
-    printf("start->path_name len: %ld\n", strlen(start->path_name));
     strncpy(temp, start->path_name, PATH_MAX+1);
 
     next = start;
@@ -341,9 +340,17 @@ void the_search_thread(){
     closedir(dir);
     //free(curr_path);
 
-    the_search_thread();
+    //the_search_thread();
 
 }//end of function the_search_thread
+
+void the_search_th(){
+
+    while(1){
+        the_search_thread();
+    }
+
+}//end of function the_search_th
 
 int main(int argc, char *argv[]){
 
@@ -403,7 +410,7 @@ int main(int argc, char *argv[]){
     
 
     for (int t = 0; t < threads_num; t++) {//create n searching threads
-        thrd_create(&thread[t], (void *)the_search_thread, NULL);
+        thrd_create(&thread[t], (void *)the_search_th, NULL);
         
     }//end of for
 
