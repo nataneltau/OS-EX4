@@ -28,6 +28,7 @@ char *search_term;
 int was_error = 0;
 int threads_can_start = 0;
 int counter_of_finds = 0;
+int counter_curr_th_waiting = 0;
 int max_threads_waiting;
 mtx_t lock_for_beginning;
 mtx_t lock_for_queue;
@@ -53,13 +54,20 @@ int is_queue_empty(){
 
 void delete_th_queue(){//when I am inside I hold lock_for_queue || inside i also hold another lock
 
-    int rc;
+    
 
     if(is_th_queue_empty()){
         return;
     }//end of if
 
-    rc = mtx_lock(&lock_for_array_threads);
+    mtx_lock(&lock_for_array_threads);
+
+    if((counter_curr_th_waiting == max_threads_waiting) && is_queue_empty()){//it's over :(
+        //do nothing 
+    }
+    else{
+        counter_curr_th_waiting--;
+    }
 
     cnd_signal(&array_threads_queue[start_th_queue]);
 
@@ -77,7 +85,7 @@ void delete_th_queue(){//when I am inside I hold lock_for_queue || inside i also
 
     }//end of else
 
-    rc = mtx_unlock(&lock_for_array_threads);
+    mtx_unlock(&lock_for_array_threads);
 
 }//end of function delete_th_queue
 
@@ -93,16 +101,20 @@ void search_over_wake_everyone(){
 
 void insert_th_queue(){//when I am inside I hold lock_for_queue
 
-    int rc;
-    //int check;
+    mtx_lock(&lock_for_array_threads);
 
-    if( (start_th_queue == 0 && end_th_queue == max_threads_waiting-1) || (start_th_queue == end_th_queue +2)){//queue will be full after this inseration
+    counter_curr_th_waiting++;
+
+    mtx_unlock(&lock_for_array_threads);
+    //int check;
+    if(counter_curr_th_waiting == max_threads_waiting ){//queue full
 
         //check = is_queue_empty;
 
+
         if(is_queue_empty()){//the search is over, I am the last that is awake
 
-            rc = mtx_unlock(&lock_for_queue);
+            mtx_unlock(&lock_for_queue);
 
            search_over_wake_everyone();
 
@@ -131,10 +143,9 @@ void insert_th_queue(){//when I am inside I hold lock_for_queue
 
     //check = is_queue_empty;
 
-    if(is_queue_empty()){//check if wake up cause queue has something or cause the search is over
+    if(is_queue_empty() && counter_curr_th_waiting == max_threads_waiting){//check if wake up cause queue has something or cause the search is over
 
-        rc = mtx_unlock(&lock_for_queue);
-
+        mtx_unlock(&lock_for_queue);
         //search_over_wake_everyone();//don't think need this cause if we are here than someone already called this func
 
         thrd_exit(SUCCESS);
@@ -146,10 +157,10 @@ void insert_th_queue(){//when I am inside I hold lock_for_queue
 
 int atomic_insert(const char *path){//this func got also DIR *wanted_dir
 
-    int rc;
+    
     node *temp;
 
-    rc = mtx_lock(&lock_for_queue);
+    mtx_lock(&lock_for_queue);
 
     temp = (node*)malloc(sizeof(node));
 
@@ -159,7 +170,7 @@ int atomic_insert(const char *path){//this func got also DIR *wanted_dir
     if(is_queue_empty()){//queue is empty
         start = end = temp;
         delete_th_queue();
-        rc = mtx_unlock(&lock_for_queue);
+        mtx_unlock(&lock_for_queue);
         
         return SUCCESS;
     }//end of if
@@ -169,7 +180,7 @@ int atomic_insert(const char *path){//this func got also DIR *wanted_dir
     end = temp;
 
     delete_th_queue();
-    rc = mtx_unlock(&lock_for_queue);
+    mtx_unlock(&lock_for_queue);
 
     return SUCCESS;
 
@@ -177,12 +188,12 @@ int atomic_insert(const char *path){//this func got also DIR *wanted_dir
 
 char *atomic_dequeue(){
 
-    int rc;
+    
     char *temp;
     node *next;
 
     //need to check that queue isn't empty, if empty then cnd_wait and increase some counter
-    rc = mtx_lock(&lock_for_queue);
+    mtx_lock(&lock_for_queue);
 
     if(!is_th_queue_empty() || is_queue_empty()){//there is threads waiting or the queue of dir is empty
         insert_th_queue();
@@ -196,11 +207,11 @@ char *atomic_dequeue(){
 
     if(next->link == NULL){//last element in queue
 
-        free(next);
         start = NULL;
         end = NULL;
+        free(next);
 
-        rc = mtx_unlock(&lock_for_queue);
+        mtx_unlock(&lock_for_queue);
 
         return temp;
 
@@ -209,7 +220,7 @@ char *atomic_dequeue(){
     start = start->link;
     free(next);
 
-    rc = mtx_unlock(&lock_for_queue);
+    mtx_unlock(&lock_for_queue);
 
     return temp;
 
@@ -246,7 +257,7 @@ int directory_can_be_search(const char *path){
 
 void the_search_thread(){
 
-    int rc;
+    
     char *curr_path;
     DIR *dir;
     struct dirent *entry;
@@ -254,13 +265,13 @@ void the_search_thread(){
     char pathi[PATH_MAX] = {0};
 
 
-    rc = mtx_lock(&lock_for_beginning);
+    mtx_lock(&lock_for_beginning);
 
     if(!threads_can_start){
         cnd_wait(&let_begin, &lock_for_beginning);
     }//end of if
 
-    rc = mtx_unlock(&lock_for_beginning);
+    mtx_unlock(&lock_for_beginning);
 
     curr_path = atomic_dequeue();//it seems that this func is infinit recursion, but it should stop here
     //when we searched all the directories
@@ -280,11 +291,11 @@ void the_search_thread(){
         if(stat(pathi, &statbuf) != 0 ){//stat failed, check if symlink as written in the forum
             if(fit_search(entry->d_name) == SUCCESS){//dirent contain the search term
                 
-                rc = mtx_lock(&lock_for_counter_of_finds);
+                mtx_lock(&lock_for_counter_of_finds);
 
                 counter_of_finds++;
 
-                rc = mtx_unlock(&lock_for_counter_of_finds);
+                mtx_unlock(&lock_for_counter_of_finds);
 
                 printf("%s\n", pathi);
                 
@@ -309,11 +320,11 @@ void the_search_thread(){
 
             if(fit_search(entry->d_name) == SUCCESS){//dirent contain the search term
                 
-                rc = mtx_lock(&lock_for_counter_of_finds);
+                mtx_lock(&lock_for_counter_of_finds);
 
                 counter_of_finds++;
 
-                rc = mtx_unlock(&lock_for_counter_of_finds);
+                mtx_unlock(&lock_for_counter_of_finds);
 
                 printf("%s\n", pathi);
                 
@@ -322,6 +333,8 @@ void the_search_thread(){
         }//end of else
 
         memset(pathi, 0, sizeof(pathi));
+        entry = readdir(dir);
+
     }//end of while
 
     
@@ -341,7 +354,7 @@ int main(int argc, char *argv[]){
         exit(1);
     }//end of if
 
-    int rc;
+    ;
     int threads_num;
 
     if(!directory_can_be_search(argv[1])){//enter if the directory cann't be searched
@@ -383,15 +396,15 @@ int main(int argc, char *argv[]){
     
 
     for (int t = 0; t < threads_num; t++) {//create n searching threads
-        rc = thrd_create(&thread[t], (void *)the_search_thread, NULL);
+        thrd_create(&thread[t], (void *)the_search_thread, NULL);
         
     }//end of for
 
-    rc = mtx_lock(&lock_for_beginning);
+    mtx_lock(&lock_for_beginning);
     
     threads_can_start = 1;
 
-    rc = mtx_unlock(&lock_for_beginning);
+    mtx_unlock(&lock_for_beginning);
 
     cnd_broadcast(&let_begin);//all threads can start, we signal them to start
 
@@ -402,11 +415,11 @@ int main(int argc, char *argv[]){
     }
 
 
-    rc = mtx_lock(&lock_for_counter_of_finds);
+    mtx_lock(&lock_for_counter_of_finds);
 
     printf("Done searching, found %d files\n", counter_of_finds);//
 
-    rc = mtx_unlock(&lock_for_counter_of_finds);
+    mtx_unlock(&lock_for_counter_of_finds);
 
 
     mtx_destroy(&lock_for_beginning);
