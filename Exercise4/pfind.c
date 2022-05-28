@@ -155,7 +155,7 @@ void insert_th_queue(){//when I am inside I hold lock_for_queue
 
 }//end of function insert_th_queue
 
-int atomic_insert(const char *path){//this func got also DIR *wanted_dir
+int atomic_insert(const char path[]){//this func got also DIR *wanted_dir
 
     
     node *temp;
@@ -189,7 +189,7 @@ int atomic_insert(const char *path){//this func got also DIR *wanted_dir
 char *atomic_dequeue(){
 
     
-    char *temp;
+    char temp[PATH_MAX+1];
     node *next;
 
     //need to check that queue isn't empty, if empty then cnd_wait and increase some counter
@@ -199,9 +199,9 @@ char *atomic_dequeue(){
         insert_th_queue();
     }
 
-    temp = (char *)malloc(sizeof(char) * (PATH_MAX+1));
+    //temp = (char *)malloc(sizeof(char) * (PATH_MAX+1));
 
-    strncpy(temp, start->path_name, PATH_MAX+1);
+    strncpy(temp, start->path_name, PATH_MAX);
 
     next = start;
 
@@ -258,7 +258,7 @@ int directory_can_be_search(const char *path){
 void the_search_thread(){
 
     
-    char *curr_path;
+    char curr_path[PATH_MAX+1];
     DIR *dir;
     struct dirent *entry;
     struct stat statbuf;
@@ -354,13 +354,20 @@ int main(int argc, char *argv[]){
         exit(1);
     }//end of if
 
-    ;
+    
     int threads_num;
+    char *rooti = "./";
 
     if(!directory_can_be_search(argv[1])){//enter if the directory cann't be searched
-        errno = EINVAL;
-        fprintf( stderr, "%s\n", strerror(errno));
-        exit(1);
+        strcat(rooti, argv[1]);
+        if(!directory_can_be_search(rooti)){
+            errno = EINVAL;
+            fprintf( stderr, "%s\n", strerror(errno));
+            exit(1);
+        }
+    }
+    else{
+        rooti = argv[1];
     }
 
     mtx_init(&lock_for_beginning, mtx_plain);
@@ -388,7 +395,7 @@ int main(int argc, char *argv[]){
         cnd_init(&array_threads_queue[j]);
     }
 
-    if(atomic_insert(argv[1]) != SUCCESS){
+    if(atomic_insert(rooti) != SUCCESS){
         fprintf( stderr, "%s\n", strerror(errno));
         exit(1);
     }//end of inner if
