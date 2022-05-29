@@ -165,6 +165,13 @@ int atomic_insert(const char path[]){//this func got also DIR *wanted_dir
 
     temp = (node*)malloc(sizeof(node));
 
+    if(temp == NULL){//malloc failed
+        mtx_unlock(&lock_for_queue);
+        was_error = 1;
+        fprintf( stderr, "%s\n", strerror(errno));
+        thrd_exit(1);        
+    }//end of if
+
     temp->link = NULL;
     strncpy(temp->path_name, path, PATH_MAX);
 
@@ -187,11 +194,11 @@ int atomic_insert(const char path[]){//this func got also DIR *wanted_dir
 
 }//end of function atomic_insert
 
-void atomic_dequeue(char temp[]){
+node *atomic_dequeue(){
 
     
-    //char temp[PATH_MAX+1];
-    node *next;
+    node *temp;
+    //node *next;
 
     //need to check that queue isn't empty, if empty then cnd_wait and increase some counter
     mtx_lock(&lock_for_queue);
@@ -200,29 +207,36 @@ void atomic_dequeue(char temp[]){
         insert_th_queue();
     }
 
-    //temp = (char *)malloc(sizeof(char) * (PATH_MAX+1));
-    strncpy(temp, start->path_name, PATH_MAX+1);
+    temp = (node *)malloc(sizeof(node));
+    if(temp == NULL){//malloc failed
+        mtx_unlock(&lock_for_queue);
+        was_error = 1;
+        fprintf( stderr, "%s\n", strerror(errno));
+        thrd_exit(1);        
+    }//end of if
+    //strncpy(temp, start->path_name, PATH_MAX+1);
 
-    next = start;
+    temp = start;
 
-    if(next->link == NULL){//last element in queue
+    if(start->link == NULL){//last element in queue
 
         start = NULL;
         end = NULL;
-        free(next);
+        //free(next);
 
         mtx_unlock(&lock_for_queue);
 
-        return /*temp*/;
+        return temp;
 
     }
 
     start = start->link;
-    free(next);
+    temp->link = NULL;
+    //free(next);
 
     mtx_unlock(&lock_for_queue);
 
-    //return temp;
+    return temp;
 
 }//end of function atomic_dequeue
 
@@ -258,7 +272,8 @@ int directory_can_be_search(const char *path){
 void the_search_thread(){
 
     
-    char curr_path[PATH_MAX+2];
+    //char curr_path[PATH_MAX+2];
+    node *curr_node;
     DIR *dir;
     struct dirent *entry;
     struct stat statbuf;
@@ -273,20 +288,20 @@ void the_search_thread(){
 
     mtx_unlock(&lock_for_beginning);
 
-    atomic_dequeue(curr_path);//it seems that this func is infinit recursion, but it should stop here
+    curr_node = atomic_dequeue();//it seems that this func is infinit recursion, but it should stop here
     //when we searched all the directories
 
-    dir = opendir(curr_path);
+    dir = opendir(curr_node->path_name);
     if(dir == NULL){//error in opendir
         was_error = 1;
         fprintf( stderr, "%s\n", strerror(errno));
-        thrd_exit(SUCCESS);
+        thrd_exit(1);
     }//end of if
 
     entry = readdir(dir);
     while(entry != NULL){
 
-        strcat(pathi, curr_path);
+        strcat(pathi, curr_node->path_name);
         strcat(pathi, "/");
         strcat(pathi, entry->d_name);
 
@@ -311,7 +326,7 @@ void the_search_thread(){
                 if(atomic_insert(pathi) != SUCCESS){
                     was_error = 1;
                     fprintf( stderr, "%s\n", strerror(errno));
-                    thrd_exit(SUCCESS);
+                    thrd_exit(1);
                 }//end of inner if
 
             }//end of if
